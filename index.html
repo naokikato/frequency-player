@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>周波数スペクトラムアナライザー</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0a0a0f;
+      color: #e0e0e0;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 16px;
+    }
+
+    h1 {
+      font-size: 1.4rem;
+      font-weight: 300;
+      letter-spacing: 0.15em;
+      color: #88aaff;
+      margin-bottom: 24px;
+    }
+
+    /* Drop zone */
+    #drop-zone {
+      width: 100%;
+      max-width: 860px;
+      border: 2px dashed #334;
+      border-radius: 12px;
+      padding: 32px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      margin-bottom: 20px;
+    }
+    #drop-zone.over {
+      border-color: #88aaff;
+      background: rgba(136,170,255,0.06);
+    }
+    #drop-zone p { color: #bbb; font-size: 0.95rem; margin-top: 8px; }
+    #file-btn {
+      display: inline-block;
+      padding: 8px 20px;
+      background: #1a2040;
+      border: 1px solid #334;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    #file-btn:hover { background: #253060; }
+    #file-input { display: none; }
+    #file-name { margin-top: 10px; font-size: 0.85rem; color: #88aaff; min-height: 1.2em; }
+
+    /* Controls */
+    #controls {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    button.ctrl {
+      padding: 8px 22px;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    button.ctrl:disabled { opacity: 0.35; cursor: default; }
+
+    #play-btn  { background: #2255cc; color: #fff; }
+    #stop-btn  { background: #1a1a2a; color: #fff; border: 1px solid #334; }
+
+    #volume-wrap { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: #fff; }
+    #volume { width: 90px; accent-color: #4477ee; }
+
+    /* Time bar */
+    #time-bar-wrap {
+      width: 100%;
+      max-width: 860px;
+      margin-bottom: 16px;
+    }
+    #seek {
+      width: 100%;
+      accent-color: #4477ee;
+      cursor: pointer;
+    }
+    #time-label { font-size: 0.8rem; color: #fff; text-align: right; margin-top: 4px; }
+
+    /* Canvases */
+    .canvas-wrap {
+      width: 100%;
+      max-width: 860px;
+      margin-bottom: 14px;
+      position: relative;
+    }
+    .canvas-label {
+      font-size: 0.75rem;
+      color: #fff;
+      letter-spacing: 0.08em;
+      margin-bottom: 4px;
+    }
+    canvas {
+      width: 100%;
+      height: auto;
+      border-radius: 8px;
+      display: block;
+    }
+    #canvas-spectrum { background: #07070f; }
+    #canvas-wave     { background: #070f07; }
+
+    /* FFT size selector */
+    #fft-wrap { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; color: #fff; margin-bottom: 10px; }
+    #fft-size { background: #111; color: #fff; border: 1px solid #334; border-radius: 4px; padding: 2px 6px; }
+
+    /* Frequency range */
+    #freq-wrap {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.82rem;
+      color: #fff;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    #freq-wrap input[type="number"] {
+      width: 80px;
+      background: #111;
+      color: #fff;
+      border: 1px solid #334;
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-size: 0.82rem;
+    }
+    #freq-reset {
+      padding: 2px 10px;
+      background: #1a1a2a;
+      color: #fff;
+      border: 1px solid #334;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.8rem;
+    }
+    #freq-reset:hover { background: #252535; color: #fff; }
+    #scale-wrap { display: flex; align-items: center; gap: 6px; margin-left: 8px; }
+    #scale-wrap label { cursor: pointer; }
+
+    /* Peak table */
+    #peak-section {
+      width: 100%;
+      max-width: 860px;
+      margin-top: 4px;
+    }
+    #peak-section h2 { font-size: 0.85rem; font-weight: 400; color: #fff; letter-spacing: 0.1em; margin-bottom: 8px; }
+    #peak-table {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 6px;
+    }
+    .peak-cell {
+      background: #0d0d1a;
+      border: 1px solid #1a1a2a;
+      border-radius: 5px;
+      padding: 6px 10px;
+      font-size: 0.78rem;
+    }
+    .peak-cell .freq { color: #88aaff; font-weight: 600; }
+    .peak-cell .db   { color: #55cc88; }
+  </style>
+</head>
+<body>
+
+<h1>SPECTRUM ANALYZER</h1>
+
+<!-- Drop / File select -->
+<div id="drop-zone">
+  <label id="file-btn">ファイルを選択
+    <input type="file" id="file-input" accept="audio/*">
+  </label>
+  <p>または音声ファイルをここにドロップ</p>
+  <div id="file-name"></div>
+</div>
+
+<!-- Controls -->
+<div id="controls">
+  <button class="ctrl" id="play-btn" disabled>&#9654; 再生</button>
+  <button class="ctrl" id="stop-btn" disabled>&#9632; 停止</button>
+  <div id="volume-wrap">
+    音量 <input type="range" id="volume" min="0" max="1" step="0.01" value="0.8">
+  </div>
+</div>
+
+<!-- Seek bar -->
+<div id="time-bar-wrap">
+  <input type="range" id="seek" min="0" max="1" step="0.001" value="0" disabled>
+  <div id="time-label">0:00 / 0:00</div>
+</div>
+
+<!-- FFT size -->
+<div id="fft-wrap">
+  FFT サイズ:
+  <select id="fft-size">
+    <option value="512">512</option>
+    <option value="1024">1024</option>
+    <option value="2048" selected>2048</option>
+    <option value="4096">4096</option>
+    <option value="8192">8192</option>
+  </select>
+  (値が大きいほど周波数解像度が高い)
+</div>
+
+<!-- Frequency range -->
+<div id="freq-wrap">
+  表示範囲:
+  <input type="number" id="freq-min" value="20" min="1" max="20000"> Hz 〜
+  <input type="number" id="freq-max" value="20000" min="1" max="20000"> Hz
+  <button id="freq-reset">全体</button>
+  <div id="scale-wrap">
+    スケール:
+    <label><input type="radio" name="scale" value="log" checked> 対数</label>
+    <label><input type="radio" name="scale" value="linear"> 線形</label>
+  </div>
+</div>
+
+<!-- Spectrum canvas -->
+<div class="canvas-wrap">
+  <div class="canvas-label">FREQUENCY SPECTRUM — 周波数 vs パワー (対数スケール)</div>
+  <canvas id="canvas-spectrum" width="860" height="300"></canvas>
+</div>
+
+<!-- Waveform canvas -->
+<div class="canvas-wrap">
+  <div class="canvas-label">WAVEFORM — 波形</div>
+  <canvas id="canvas-wave" width="860" height="120"></canvas>
+</div>
+
+<!-- Peak frequency table -->
+<div id="peak-section">
+  <h2>TOP PEAKS — 強い周波数成分</h2>
+  <div id="peak-table"></div>
+</div>
+
+<script>
+// Audio context & nodes
+let actx = null;
+let source = null;
+let analyser = null;
+let gainNode = null;
+let audioBuffer = null;
+let startTime = 0;
+let pauseOffset = 0;
+let isPlaying = false;
+let frameCount = 0;
+let peaks = [];
+let peakHold = [];
+
+// Frequency view range
+let viewMinF = 20;
+let viewMaxF = 20000;
+let useLogScale = true;
+
+// DOM refs
+const fileInput    = document.getElementById('file-input');
+const dropZone     = document.getElementById('drop-zone');
+const fileNameEl   = document.getElementById('file-name');
+const playBtn      = document.getElementById('play-btn');
+const stopBtn      = document.getElementById('stop-btn');
+const volumeSlider = document.getElementById('volume');
+const seekBar      = document.getElementById('seek');
+const timeLabel    = document.getElementById('time-label');
+const fftSel       = document.getElementById('fft-size');
+const freqMinEl    = document.getElementById('freq-min');
+const freqMaxEl    = document.getElementById('freq-max');
+const freqResetBtn = document.getElementById('freq-reset');
+const specCanvas   = document.getElementById('canvas-spectrum');
+const waveCanvas   = document.getElementById('canvas-wave');
+const peakTable    = document.getElementById('peak-table');
+const specCtx      = specCanvas.getContext('2d');
+const waveCtx      = waveCanvas.getContext('2d');
+
+function ensureContext() {
+  if (!actx) {
+    actx = new (window.AudioContext || window.webkitAudioContext)();
+    gainNode = actx.createGain();
+    gainNode.gain.value = parseFloat(volumeSlider.value);
+    gainNode.connect(actx.destination);
+  }
+}
+
+function createAnalyser() {
+  if (analyser) analyser.disconnect();
+  analyser = actx.createAnalyser();
+  analyser.fftSize = parseInt(fftSel.value);
+  analyser.smoothingTimeConstant = 0.8;
+  analyser.minDecibels = -100;
+  analyser.maxDecibels = -10;
+  analyser.connect(gainNode);
+  peakHold = [];
+}
+
+async function loadFile(file) {
+  ensureContext();
+  if (isPlaying) stopPlayback();
+  fileNameEl.textContent = file.name;
+
+  const ab = await file.arrayBuffer();
+  audioBuffer = await actx.decodeAudioData(ab);
+
+  pauseOffset = 0;
+  seekBar.disabled = false;
+  seekBar.max = audioBuffer.duration;
+  seekBar.value = 0;
+  playBtn.disabled = false;
+  stopBtn.disabled = false;
+  updateTimeLabel(0);
+  createAnalyser();
+}
+
+function startPlayback(offset) {
+  if (!audioBuffer) return;
+  if (source) { try { source.disconnect(); } catch(e) {} source = null; }
+
+  source = actx.createBufferSource();
+  source.buffer = audioBuffer;
+  source.connect(analyser);
+  source.start(0, offset);
+  source.onended = function() {
+    if (isPlaying) {
+      isPlaying = false;
+      pauseOffset = 0;
+      seekBar.value = 0;
+      playBtn.textContent = '▶ 再生';
+      updateTimeLabel(0);
+    }
+  };
+
+  startTime = actx.currentTime - offset;
+  isPlaying = true;
+  playBtn.textContent = '⏸ 一時停止';
+  drawLoop();
+}
+
+function pausePlayback() {
+  pauseOffset = actx.currentTime - startTime;
+  try { source.stop(); } catch(e) {}
+  isPlaying = false;
+  playBtn.textContent = '▶ 再生';
+}
+
+function stopPlayback() {
+  if (source) { try { source.stop(); } catch(e) {} source = null; }
+  isPlaying = false;
+  pauseOffset = 0;
+  seekBar.value = 0;
+  playBtn.textContent = '▶ 再生';
+  updateTimeLabel(0);
+}
+
+playBtn.addEventListener('click', function() {
+  ensureContext();
+  if (actx.state === 'suspended') actx.resume();
+  if (isPlaying) pausePlayback();
+  else startPlayback(pauseOffset);
+});
+
+stopBtn.addEventListener('click', function() { stopPlayback(); });
+
+seekBar.addEventListener('input', function() {
+  if (!audioBuffer) return;
+  var t = parseFloat(seekBar.value);
+  updateTimeLabel(t);
+  if (isPlaying) {
+    pauseOffset = t;
+    startPlayback(t);
+  } else {
+    pauseOffset = t;
+  }
+});
+
+volumeSlider.addEventListener('input', function() {
+  if (gainNode) gainNode.gain.value = parseFloat(volumeSlider.value);
+});
+
+fftSel.addEventListener('change', function() {
+  if (analyser) {
+    createAnalyser();
+    if (source) source.connect(analyser);
+  }
+});
+
+fileInput.addEventListener('change', function() {
+  if (fileInput.files[0]) loadFile(fileInput.files[0]);
+});
+
+function applyFreqRange() {
+  var nyquist = actx ? actx.sampleRate / 2 : 20000;
+  var lo = Math.max(1, parseFloat(freqMinEl.value) || 20);
+  var hi = Math.min(nyquist, parseFloat(freqMaxEl.value) || 20000);
+  if (lo >= hi) { lo = Math.max(1, hi - 1); }
+  viewMinF = lo;
+  viewMaxF = hi;
+  freqMinEl.value = lo;
+  freqMaxEl.value = hi;
+  peakHold = [];
+}
+
+freqMinEl.addEventListener('change', applyFreqRange);
+freqMaxEl.addEventListener('change', applyFreqRange);
+
+freqResetBtn.addEventListener('click', function() {
+  var nyquist = actx ? actx.sampleRate / 2 : 20000;
+  viewMinF = 20;
+  viewMaxF = nyquist;
+  freqMinEl.value = 20;
+  freqMaxEl.value = Math.round(nyquist);
+  peakHold = [];
+});
+
+document.querySelectorAll('input[name="scale"]').forEach(function(r) {
+  r.addEventListener('change', function() {
+    useLogScale = (r.value === 'log');
+    peakHold = [];
+  });
+});
+
+dropZone.addEventListener('dragover', function(e) { e.preventDefault(); dropZone.classList.add('over'); });
+dropZone.addEventListener('dragleave', function() { dropZone.classList.remove('over'); });
+dropZone.addEventListener('drop', function(e) {
+  e.preventDefault();
+  dropZone.classList.remove('over');
+  var f = e.dataTransfer.files[0];
+  if (f && f.type.startsWith('audio/')) loadFile(f);
+});
+
+function fmt(sec) {
+  var m = Math.floor(sec / 60);
+  var s = Math.floor(sec % 60).toString().padStart(2, '0');
+  return m + ':' + s;
+}
+
+function updateTimeLabel(current) {
+  var dur = audioBuffer ? audioBuffer.duration : 0;
+  timeLabel.textContent = fmt(current) + ' / ' + fmt(dur);
+}
+
+function barColor(norm) {
+  var r = Math.round(255 * Math.min(1, norm * 2));
+  var g = Math.round(255 * Math.min(1, (1 - norm) * 1.5));
+  var b = Math.round(180 * (1 - norm));
+  return 'rgb(' + r + ',' + g + ',' + b + ')';
+}
+
+function drawSpectrum(dataArray) {
+  var W = specCanvas.width;
+  var H = specCanvas.height;
+  specCtx.clearRect(0, 0, W, H);
+
+  var minDb = analyser.minDecibels;
+  var maxDb = analyser.maxDecibels;
+  var dbRange = maxDb - minDb;
+
+  // dB grid lines
+  specCtx.lineWidth = 1;
+  for (var db = -90; db <= -10; db += 10) {
+    var y = H - ((db - minDb) / dbRange) * H;
+    specCtx.strokeStyle = '#161624';
+    specCtx.beginPath();
+    specCtx.moveTo(0, y);
+    specCtx.lineTo(W, y);
+    specCtx.stroke();
+    specCtx.fillStyle = '#aabbcc';
+    specCtx.font = '10px monospace';
+    specCtx.fillText(db + ' dB', 4, y - 2);
+  }
+
+  var binCount = analyser.frequencyBinCount;
+  var nyquist = actx.sampleRate / 2;
+  var loF = Math.max(1, viewMinF);
+  var hiF = Math.min(nyquist, viewMaxF);
+
+  // Map canvas x <-> frequency using current scale
+  function xToFreq(x) {
+    var t = x / W;
+    if (useLogScale) {
+      return Math.pow(10, Math.log10(loF) + t * (Math.log10(hiF) - Math.log10(loF)));
+    }
+    return loF + t * (hiF - loF);
+  }
+  function freqToX(f) {
+    var t;
+    if (useLogScale) {
+      t = (Math.log10(f) - Math.log10(loF)) / (Math.log10(hiF) - Math.log10(loF));
+    } else {
+      t = (f - loF) / (hiF - loF);
+    }
+    return t * W;
+  }
+  function freqToBin(f) {
+    return Math.round((f / nyquist) * (binCount - 1));
+  }
+
+  // frequency grid lines — pick marks within [loF, hiF]
+  var allMarks = [1,2,5,10,20,50,100,200,500,1000,2000,5000,10000,20000];
+  // add finer marks when zoomed in
+  var span = hiF - loF;
+  if (span < 500) {
+    for (var mf = Math.ceil(loF / 10) * 10; mf <= hiF; mf += 10) allMarks.push(mf);
+  }
+  if (span < 50) {
+    for (var mf = Math.ceil(loF); mf <= hiF; mf += 1) allMarks.push(mf);
+  }
+  allMarks = allMarks.filter(function(f, i, a) {
+    return f >= loF && f <= hiF && a.indexOf(f) === i;
+  }).sort(function(a,b){return a-b;});
+
+  allMarks.forEach(function(f) {
+    var x = freqToX(f);
+    if (x < 0 || x > W) return;
+    specCtx.strokeStyle = '#161624';
+    specCtx.beginPath();
+    specCtx.moveTo(x, 0);
+    specCtx.lineTo(x, H);
+    specCtx.stroke();
+    specCtx.fillStyle = '#aabbcc';
+    specCtx.font = '10px monospace';
+    var label = f >= 1000 ? (f / 1000) + 'k' : '' + f;
+    specCtx.fillText(label, x + 2, H - 4);
+  });
+
+  var barW = Math.max(1, W / 640);
+  var localPeaks = [];
+
+  for (var px = 0; px < W; px += barW) {
+    var f0 = Math.max(loF, xToFreq(px));
+    var f1 = Math.min(hiF, xToFreq(px + barW));
+    if (f0 >= f1) continue;
+    var b0 = freqToBin(f0);
+    var b1 = Math.max(b0, freqToBin(f1));
+
+    var sum = 0, cnt = 0;
+    for (var b = b0; b <= b1 && b < binCount; b++) { sum += dataArray[b]; cnt++; }
+    var val = cnt ? sum / cnt : 0;
+    var norm = val / 255;
+
+    // peak hold per bar
+    var bi = Math.floor(px / barW);
+    if (!peakHold[bi] || peakHold[bi].val < val) {
+      peakHold[bi] = { val: val, decay: 0 };
+    } else {
+      peakHold[bi].decay += 0.4;
+      peakHold[bi].val = Math.max(0, peakHold[bi].val - peakHold[bi].decay);
+    }
+
+    var barH = norm * H;
+    specCtx.fillStyle = barColor(norm);
+    specCtx.fillRect(px, H - barH, barW - 1, barH);
+
+    // peak hold line
+    var phNorm = peakHold[bi].val / 255;
+    var phY = H - phNorm * H;
+    specCtx.fillStyle = 'rgba(255,255,255,0.5)';
+    specCtx.fillRect(px, phY - 1, barW - 1, 2);
+
+    if (norm > 0.4) {
+      var centerF = (f0 + f1) / 2;
+      var dbVal = minDb + norm * dbRange;
+      localPeaks.push({ freq: centerF, norm: norm, db: dbVal });
+    }
+  }
+
+  // deduplicate peaks (within 1 octave)
+  localPeaks.sort(function(a, b) { return b.norm - a.norm; });
+  peaks = [];
+  for (var i = 0; i < localPeaks.length; i++) {
+    var p = localPeaks[i];
+    var dup = false;
+    for (var j = 0; j < peaks.length; j++) {
+      if (Math.abs(Math.log2(p.freq / peaks[j].freq)) < 0.5) { dup = true; break; }
+    }
+    if (!dup) { peaks.push(p); if (peaks.length >= 10) break; }
+  }
+}
+
+function drawWave(timeData) {
+  var W = waveCanvas.width;
+  var H = waveCanvas.height;
+  waveCtx.clearRect(0, 0, W, H);
+
+  waveCtx.strokeStyle = '#1a2a1a';
+  waveCtx.lineWidth = 1;
+  waveCtx.beginPath();
+  waveCtx.moveTo(0, H / 2);
+  waveCtx.lineTo(W, H / 2);
+  waveCtx.stroke();
+
+  waveCtx.strokeStyle = '#33cc66';
+  waveCtx.lineWidth = 1.5;
+  waveCtx.beginPath();
+  var sliceW = W / timeData.length;
+  for (var i = 0; i < timeData.length; i++) {
+    var v = (timeData[i] / 128) - 1;
+    var y = (v * H / 2) + H / 2;
+    if (i === 0) waveCtx.moveTo(0, y);
+    else waveCtx.lineTo(i * sliceW, y);
+  }
+  waveCtx.stroke();
+}
+
+function updatePeakTable() {
+  peakTable.innerHTML = '';
+  peaks.forEach(function(p) {
+    var cell = document.createElement('div');
+    cell.className = 'peak-cell';
+    var freqStr = p.freq >= 1000 ? (p.freq / 1000).toFixed(1) + ' kHz' : Math.round(p.freq) + ' Hz';
+    cell.innerHTML = '<div class="freq">' + freqStr + '</div><div class="db">' + p.db.toFixed(1) + ' dB</div>';
+    peakTable.appendChild(cell);
+  });
+}
+
+function drawLoop() {
+  if (!isPlaying || !analyser) return;
+  requestAnimationFrame(drawLoop);
+
+  var fd = new Uint8Array(analyser.frequencyBinCount);
+  var td = new Uint8Array(analyser.fftSize);
+  analyser.getByteFrequencyData(fd);
+  analyser.getByteTimeDomainData(td);
+
+  drawSpectrum(fd);
+  drawWave(td);
+
+  var elapsed = actx.currentTime - startTime;
+  var clamped = Math.min(elapsed, audioBuffer.duration);
+  seekBar.value = clamped;
+  updateTimeLabel(clamped);
+
+  frameCount++;
+  if (frameCount % 10 === 0) updatePeakTable();
+}
+
+// Initial placeholder draw
+(function() {
+  var W = specCanvas.width, H = specCanvas.height;
+  specCtx.fillStyle = '#07070f';
+  specCtx.fillRect(0, 0, W, H);
+  specCtx.fillStyle = '#667799';
+  specCtx.font = '14px system-ui';
+  specCtx.textAlign = 'center';
+  specCtx.fillText('音声ファイルを読み込むとスペクトラムが表示されます', W / 2, H / 2);
+
+  waveCtx.fillStyle = '#070f07';
+  waveCtx.fillRect(0, 0, waveCanvas.width, waveCanvas.height);
+})();
+</script>
+</body>
+</html>
